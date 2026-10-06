@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-jsL+nBXVmSlpRjRfXu8S6jFAsYSPlJ6js9Qwtm5YEW0=' 'sha256-I8vwIf5OwBxSwCbminf5gR49gQR9Jaws3h0ffaFqfg8='; style-src 'sha256-CiJ/6h1Qnhd1zvR0+/6yjedVh6ih3vv6F/r1foXT/XU='; img-src 'self' data:; manifest-src 'self'; worker-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Калькулятор — пример PWA-приложения</title>
+<meta name="description" content="Демо-приложение: калькулятор для компьютера и телефона. Тёмная и светлая тема, ввод с клавиатуры, вибрация на телефоне, работает без интернета и ставится на домашний экран.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Калькулятор — пример PWA-приложения">
+<meta property="og:description" content="Работает на компьютере и телефоне, без интернета, с тёмной и светлой темой.">
+<meta property="og:image" content="https://vitaly-sokol911.github.io/calculator/preview/og.png">
+<meta name="theme-color" content="#0f1115" id="metaTheme">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Калькулятор">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<script>
+  /* Тема выставляется до первой отрисовки: нет вспышки чужого фона при запуске. */
+  (function () {
+    var d = document.documentElement, t = null;
+    d.className = 'no-anim';
+    try { t = localStorage.getItem('calc-theme'); } catch (e) { /* хранилище может быть недоступно */ }
+    if (t !== 'light' && t !== 'dark') {
+      t = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+    d.setAttribute('data-theme', t);
+  })();
+</script>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #1e2c3c;
+    --text: #f1f6fb;
+    --text-dim: #8596ab;
+    --key: #141c26;
+    --key-hi: #1e2a37;
+    --key-fn: #1a2533;
+    --key-fn-hi: #243344;
+    --lime: #a6e264;
+    --lime-hi: #b8ea7e;
+    --lime-text: #16240a;
+    --lime-on: #cdf29a;
+    --lime-on-text: #16240a;
+    --op-symbol: #a6e264;
+    --frame: #33506d;
+    --frame-in: rgba(255, 255, 255, .05);
+    --lcd: #101820;
+    --lcd-edge: #2d4459;
+    --shadow: 0 24px 60px rgba(0, 0, 0, .55);
+    --ring: #6ea8ff;
+    --err: #ff6b6b;
+  }
+
+  /* Светлая тема. Цвета текста подобраны под контраст не ниже 4,5:1 (WCAG AA) */
+  :root[data-theme="light"] {
+    --bg: #eef1f6;
+    --panel: #d3e4f2;
+    --text: #0f1620;
+    --text-dim: #4d6075;
+    --key: #fbfdff;
+    --key-hi: #edf4fb;
+    --key-fn: #e8f1f9;
+    --key-fn-hi: #d9e8f5;
+    --lime: #a9e05f;
+    --lime-hi: #99d44c;
+    --lime-text: #1b2f08;
+    --lime-on: #6fbb2e;
+    --lime-on-text: #10200a;
+    --op-symbol: #3b7510;
+    --frame: #b3cee4;
+    --frame-in: rgba(255, 255, 255, .6);
+    --lcd: #e9f1ec;
+    --lcd-edge: #b6c8cb;
+    --shadow: 0 24px 60px rgba(23, 33, 58, .16);
+    --ring: #2c6fd6;
+    --err: #c62828;
+  }
+  * { box-sizing: border-box; }
+
+  .no-anim, .no-anim * { transition: none !important; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Отступы, чтобы рамка корпуса была видна целиком даже на телефоне */
+    padding:
+      calc(10px + env(safe-area-inset-top))
+      calc(10px + env(safe-area-inset-right))
+      calc(10px + env(safe-area-inset-bottom))
+      calc(10px + env(safe-area-inset-left));
+    transition: background-color .2s ease, color .2s ease;
+  }
+
+  /* Корпус калькулятора */
+  .app {
+    width: 100%;
+    max-width: 380px;
+    height: 100%;
+    background: var(--panel);
+    border: 3px solid var(--frame);
+    border-radius: 28px;
+    box-shadow: inset 0 0 0 1px var(--frame-in), var(--shadow);
+    display: flex;
+    flex-direction: column;
+    padding: 14px;
+    gap: 12px;
+    transition: background-color .2s ease, border-color .2s ease;
+  }
+
+  /* На компьютере — компактный корпус по центру, на телефоне — во весь экран */
+  @media (min-width: 480px) and (min-height: 620px) {
+    .app {
+      height: min(620px, calc(100vh - 48px));
+      padding: 18px;
+    }
+  }
+
+  /* Шапка */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex: 0 0 auto;
+    padding: 0 6px;
+  }
+
+  .title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  /* На узком экране надпись чуть меньше — освобождаем место наклейкам */
+  @media (max-width: 420px) {
+    .title { font-size: 12px; letter-spacing: .02em; }
+  }
+
+  /* Наклейка: между надписью и луной, ближе к надписи, над дисплеем */
+  .stickers {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0 -10px 0 0;   /* кнопка луны 40 px, сам значок 20 px: считаем зазор до значка, а не до кнопки */
+    display: flex;
+    align-items: center;
+    justify-content: space-evenly;   /* три наклейки на равных расстояниях */
+  }
+
+  .sticker {
+    flex: 0 1 auto;
+    width: auto;         /* ширина по самой голове — тогда зазоры между головами равны */
+    height: 50px;
+    margin: -5px 0;      /* компенсируем высоту, чтобы шапка не разъезжалась */
+    min-width: 0;
+    object-fit: contain;
+    position: relative;
+    z-index: 2;
+    transform: translateY(-2px);
+    filter: drop-shadow(0 3px 5px rgba(0, 0, 0, .28));
+    pointer-events: none;
+  }
+
+  .theme-toggle {
+    width: 40px;
+    height: 40px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: background-color .15s ease, color .15s ease;
+  }
+
+  .theme-toggle:hover { background: var(--key); color: var(--text); }
+  .theme-toggle svg { width: 20px; height: 20px; }
+  .theme-toggle:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+  :root[data-theme="dark"] .theme-toggle .i-moon,
+  :root[data-theme="light"] .theme-toggle .i-sun { display: none; }
+
+  /* Дисплей — вставленное в корпус окошко со своей рамкой */
+  .display {
+    flex: 0 1 auto;
+    min-height: 110px;
+    max-height: 190px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 10px 14px 12px;
+    overflow: hidden;
+    background: var(--lcd);
+    border: 2px solid var(--lcd-edge);
+    border-radius: 16px;
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, .12);
+    transition: background-color .2s ease, border-color .2s ease;
+  }
+
+  .expr {
+    font-size: 17px;
+    line-height: 1.2;
+    color: var(--text-dim);
+    min-height: 21px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    max-width: 100%;
+    text-align: right;
+  }
+
+  .result {
+    font-size: clamp(2.6rem, 13vw, 3.4rem);
+    line-height: 1.05;
+    font-weight: 300;
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-align: right;
+  }
+
+  .result.err { color: var(--err); }
+
+  /* Клавиатура */
+  .keys {
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: minmax(56px, 1fr);
+    gap: 10px;
+  }
+
+  @media (max-height: 620px) {
+    .keys { grid-auto-rows: minmax(48px, 1fr); gap: 8px; }
+  }
+
+  .key {
+    min-height: 48px;
+    border: 0;
+    border-radius: 18px;
+    background: var(--key);
+    color: var(--text);
+    font-family: inherit;
+    font-size: clamp(1.25rem, 5.5vw, 1.55rem);
+    font-weight: 500;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: background-color .13s ease, transform .08s ease;
+    outline: none;
+  }
+
+  .key:hover { background: var(--key-hi); }
+  .key:focus-visible { box-shadow: 0 0 0 3px var(--ring); }
+  .key:active, .key.pressed { transform: scale(.94); background: var(--key-hi); }
+
+  .key.fn { background: var(--key-fn); color: var(--text); font-size: clamp(1.1rem, 4.8vw, 1.35rem); }
+  .key.fn:hover { background: var(--key-fn-hi); }
+  .key.fn:active, .key.fn.pressed { background: var(--key-fn-hi); }
+
+  /* У действий зелёные только знаки, кнопка как у остальных служебных */
+  .key.op { background: var(--key-fn); color: var(--op-symbol); font-weight: 700; }
+  .key.op:hover { background: var(--key-fn-hi); }
+  .key.op:active, .key.op.pressed { background: var(--key-fn-hi); }
+
+  /* Выбранное действие подсвечивается заливкой */
+  .key.op.active { background: var(--lime-on); color: var(--lime-on-text); }
+
+  .key.eq { background: var(--lime); color: var(--lime-text); font-weight: 700; }
+  .key.eq:hover { background: var(--lime-hi); }
+  .key.eq:active, .key.eq.pressed { background: var(--lime-hi); }
+
+  .noscript { margin: 0; padding: 12px; text-align: center; color: var(--text-dim); font-size: 14px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; animation: none !important; }
+  }
+
+  @media (hover: none) {
+    .key:hover { background: var(--key); }
+    .key.fn:hover, .key.op:hover { background: var(--key-fn); }
+    .key.eq:hover { background: var(--lime); }
+    .key.op.active { background: var(--lime-on); }
+  }
+</style>
+</head>
+<body>
+
+<main class="app">
+  <noscript><p class="noscript">Для работы калькулятора нужен включённый JavaScript.</p></noscript>
+  <header class="topbar">
+    <h1 class="title">Калькулятор</h1>
+    <div class="stickers" aria-hidden="true">
+    <img class="sticker" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgMTA4IiB3aWR0aD0iMTIwIiBoZWlnaHQ9IjEwOCI+CjxnIHN0cm9rZT0iIzFiMWIxZiIgc3Ryb2tlLXdpZHRoPSI1IiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBzdHJva2UtbGluZWNhcD0icm91bmQiPgo8cGF0aCBkPSJNMTYgNTAgTDEyIDggTDQ4IDI4IFoiIGZpbGw9IiNmNTlhM2IiLz4KPHBhdGggZD0iTTEwNCA1MCBMMTA4IDggTDcyIDI4IFoiIGZpbGw9IiNmNTlhM2IiLz4KPHBhdGggZD0iTTE5IDM4IEwxOCAxOCBMMzQgMjcgWiIgZmlsbD0iI2Y3YjhiOCIgc3Ryb2tlPSJub25lIi8+CjxwYXRoIGQ9Ik0xMDEgMzggTDEwMiAxOCBMODYgMjcgWiIgZmlsbD0iI2Y3YjhiOCIgc3Ryb2tlPSJub25lIi8+CjxlbGxpcHNlIGN4PSI2MCIgY3k9IjY2IiByeD0iNTAiIHJ5PSIzOCIgZmlsbD0iI2Y1OWEzYiIvPgo8cGF0aCBkPSJNNjAgMzAgVjQxIE00OSAzMiBMNTIgNDEgTTcxIDMyIEw2OCA0MSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYjg1YzE0IiBzdHJva2Utd2lkdGg9IjQiLz4KPGVsbGlwc2UgY3g9IjQxIiBjeT0iNjQiIHJ4PSIxMCIgcnk9IjEyIiBmaWxsPSIjZmZmIi8+CjxlbGxpcHNlIGN4PSI3OSIgY3k9IjY0IiByeD0iMTAiIHJ5PSIxMiIgZmlsbD0iI2ZmZiIvPgo8Y2lyY2xlIGN4PSI0MyIgY3k9IjY2IiByPSI1IiBmaWxsPSIjMWIxYjFmIiBzdHJva2U9Im5vbmUiLz4KPGNpcmNsZSBjeD0iNzciIGN5PSI2NiIgcj0iNSIgZmlsbD0iIzFiMWIxZiIgc3Ryb2tlPSJub25lIi8+CjxlbGxpcHNlIGN4PSI2MCIgY3k9Ijg0IiByeD0iMTkiIHJ5PSIxMiIgZmlsbD0iI2ZmZjNlMCIgc3Ryb2tlPSJub25lIi8+CjxwYXRoIGQ9Ik01MyA3NSBINjcgTDYwIDgzIFoiIGZpbGw9IiNmMjdjOGQiIHN0cm9rZS13aWR0aD0iMy41Ii8+CjxwYXRoIGQ9Ik02MCA4MyBWODkgTTYwIDg5IFE1MyA5NiA0NiA5MSBNNjAgODkgUTY3IDk2IDc0IDkxIiBmaWxsPSJub25lIiBzdHJva2Utd2lkdGg9IjMuNSIvPgo8cGF0aCBkPSJNMzAgODAgTDggNzYgTTMwIDg2IEw5IDkwIE05MCA4MCBMMTEyIDc2IE05MCA4NiBMMTExIDkwIiBmaWxsPSJub25lIiBzdHJva2Utd2lkdGg9IjMiLz4KPC9nPjwvc3ZnPg==" alt="">
+    <img class="sticker" data-scale="1.08" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTEyIiB3aWR0aD0iMTAwIiBoZWlnaHQ9IjExMiI+CjxnIHN0cm9rZT0iIzFiMWIxZiIgc3Ryb2tlLXdpZHRoPSI1IiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBzdHJva2UtbGluZWNhcD0icm91bmQiPgo8cGF0aCBkPSJNMTQgNDAgTDEwIDggTDQwIDIyIFoiIGZpbGw9IiM2ZjkzYzkiLz4KPHBhdGggZD0iTTg2IDQwIEw5MCA4IEw2MCAyMiBaIiBmaWxsPSIjNmY5M2M5Ii8+CjxlbGxpcHNlIGN4PSI1MCIgY3k9IjY2IiByeD0iNDIiIHJ5PSI0MiIgZmlsbD0iIzZmOTNjOSIvPgo8ZWxsaXBzZSBjeD0iNTAiIGN5PSI3NiIgcng9IjI0IiByeT0iMjYiIGZpbGw9IiNmMWU2YzgiIHN0cm9rZT0ibm9uZSIvPgo8Y2lyY2xlIGN4PSIzMSIgY3k9IjU2IiByPSIxNyIgZmlsbD0iI2ZmZiIvPgo8Y2lyY2xlIGN4PSI2OSIgY3k9IjU2IiByPSIxNyIgZmlsbD0iI2ZmZiIvPgo8Y2lyY2xlIGN4PSIzMyIgY3k9IjU4IiByPSI3IiBmaWxsPSIjMWIxYjFmIiBzdHJva2U9Im5vbmUiLz4KPGNpcmNsZSBjeD0iNjciIGN5PSI1OCIgcj0iNyIgZmlsbD0iIzFiMWIxZiIgc3Ryb2tlPSJub25lIi8+CjxjaXJjbGUgY3g9IjM1IiBjeT0iNTUiIHI9IjIuMiIgZmlsbD0iI2ZmZiIgc3Ryb2tlPSJub25lIi8+CjxjaXJjbGUgY3g9IjY5IiBjeT0iNTUiIHI9IjIuMiIgZmlsbD0iI2ZmZiIgc3Ryb2tlPSJub25lIi8+CjxwYXRoIGQ9Ik00OCA1NiBINTIiIGZpbGw9Im5vbmUiIHN0cm9rZS13aWR0aD0iNCIvPgo8cGF0aCBkPSJNNDIgNzIgSDU4IEw1MCA4NiBaIiBmaWxsPSIjZjVhNjIzIiBzdHJva2Utd2lkdGg9IjQiLz4KPHBhdGggZD0iTTMyIDk4IFE1MCAxMDYgNjggOTgiIGZpbGw9Im5vbmUiIHN0cm9rZT0ibm9uZSIvPgo8L2c+PC9zdmc+" alt="">
+    <img class="sticker" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgMTA4IiB3aWR0aD0iMTIwIiBoZWlnaHQ9IjEwOCI+CjxnIHN0cm9rZT0iIzFiMWIxZiIgc3Ryb2tlLXdpZHRoPSI1IiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBzdHJva2UtbGluZWNhcD0icm91bmQiPgo8Y2lyY2xlIGN4PSIyMiIgY3k9IjI0IiByPSIxNyIgZmlsbD0iIzJiMmIzMSIvPgo8Y2lyY2xlIGN4PSI5OCIgY3k9IjI0IiByPSIxNyIgZmlsbD0iIzJiMmIzMSIvPgo8ZWxsaXBzZSBjeD0iNjAiIGN5PSI2MiIgcng9IjUyIiByeT0iNDIiIGZpbGw9IiNmYmZiZmQiLz4KPGVsbGlwc2UgY3g9IjM4IiBjeT0iNTgiIHJ4PSIxMyIgcnk9IjE2IiBmaWxsPSIjMmIyYjMxIiB0cmFuc2Zvcm09InJvdGF0ZSgyMCAzOCA1OCkiLz4KPGVsbGlwc2UgY3g9IjgyIiBjeT0iNTgiIHJ4PSIxMyIgcnk9IjE2IiBmaWxsPSIjMmIyYjMxIiB0cmFuc2Zvcm09InJvdGF0ZSgtMjAgODIgNTgpIi8+CjxjaXJjbGUgY3g9IjM5IiBjeT0iNTciIHI9IjUiIGZpbGw9IiNmZmYiIHN0cm9rZT0ibm9uZSIvPgo8Y2lyY2xlIGN4PSI4MSIgY3k9IjU3IiByPSI1IiBmaWxsPSIjZmZmIiBzdHJva2U9Im5vbmUiLz4KPGNpcmNsZSBjeD0iNDAiIGN5PSI1OCIgcj0iMi40IiBmaWxsPSIjMWIxYjFmIiBzdHJva2U9Im5vbmUiLz4KPGNpcmNsZSBjeD0iODAiIGN5PSI1OCIgcj0iMi40IiBmaWxsPSIjMWIxYjFmIiBzdHJva2U9Im5vbmUiLz4KPGVsbGlwc2UgY3g9IjYwIiBjeT0iNzYiIHJ4PSI4IiByeT0iNiIgZmlsbD0iIzJiMmIzMSIvPgo8cGF0aCBkPSJNNjAgODIgVjg4IE02MCA4OCBRNTMgOTUgNDYgOTAgTTYwIDg4IFE2NyA5NSA3NCA5MCIgZmlsbD0ibm9uZSIgc3Ryb2tlLXdpZHRoPSIzLjUiLz4KPGVsbGlwc2UgY3g9IjI1IiBjeT0iNzgiIHJ4PSI3IiByeT0iNCIgZmlsbD0iI2Y0YTBhOCIgc3Ryb2tlPSJub25lIi8+CjxlbGxpcHNlIGN4PSI5NSIgY3k9Ijc4IiByeD0iNyIgcnk9IjQiIGZpbGw9IiNmNGEwYTgiIHN0cm9rZT0ibm9uZSIvPgo8L2c+PC9zdmc+" alt="">
+    </div>
+    <button class="theme-toggle" id="themeBtn" type="button" aria-label="Сменить тему" title="Сменить тему">
+      <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4.2"></circle>
+        <path d="M12 2.5v2.2M12 19.3v2.2M21.5 12h-2.2M4.7 12H2.5M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6M18.7 18.7l-1.6-1.6M6.9 6.9L5.3 5.3"></path>
+      </svg>
+      <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20.5 14.3A8.5 8.5 0 1 1 9.7 3.5a6.8 6.8 0 0 0 10.8 10.8z"></path>
+      </svg>
+    </button>
+  </header>
+
+  <section class="display">
+    <div class="expr" id="expr"></div>
+    <div class="result" id="result" role="status" aria-live="polite">0</div>
+  </section>
+
+  <div class="keys" id="keys">
+    <button class="key fn" type="button" data-action="clear" aria-label="Сбросить">C</button>
+    <button class="key fn" type="button" data-action="back" aria-label="Стереть последний символ">⌫</button>
+    <button class="key fn" type="button" data-action="percent" aria-label="Процент">%</button>
+    <button class="key op" type="button" data-action="op" data-op="÷" aria-label="Разделить">÷</button>
+
+    <button class="key" type="button" data-action="digit" data-digit="7">7</button>
+    <button class="key" type="button" data-action="digit" data-digit="8">8</button>
+    <button class="key" type="button" data-action="digit" data-digit="9">9</button>
+    <button class="key op" type="button" data-action="op" data-op="×" aria-label="Умножить">×</button>
+
+    <button class="key" type="button" data-action="digit" data-digit="4">4</button>
+    <button class="key" type="button" data-action="digit" data-digit="5">5</button>
+    <button class="key" type="button" data-action="digit" data-digit="6">6</button>
+    <button class="key op" type="button" data-action="op" data-op="−" aria-label="Вычесть">−</button>
+
+    <button class="key" type="button" data-action="digit" data-digit="1">1</button>
+    <button class="key" type="button" data-action="digit" data-digit="2">2</button>
+    <button class="key" type="button" data-action="digit" data-digit="3">3</button>
+    <button class="key op" type="button" data-action="op" data-op="+" aria-label="Прибавить">+</button>
+
+    <button class="key fn" type="button" data-action="sign" aria-label="Сменить знак">±</button>
+    <button class="key" type="button" data-action="digit" data-digit="0">0</button>
+    <button class="key" type="button" data-action="dot" aria-label="Запятая">,</button>
+    <button class="key eq" type="button" data-action="equals" aria-label="Равно">=</button>
+  </div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  var MAX_DIGITS = 15;
+  var ERR = 'Ошибка';
+  var THIN = ' ';
+
+  var exprEl = document.getElementById('expr');
+  var resultEl = document.getElementById('result');
+  var keysEl = document.getElementById('keys');
+  var themeBtn = document.getElementById('themeBtn');
+  var metaTheme = document.getElementById('metaTheme');
+
+  var state = {
+    current: '0',   // набираемое число как строка
+    previous: null, // первый операнд (число)
+    op: null,       // '+', '−', '×', '÷'
+    overwrite: false, // следующая цифра заменяет содержимое, а не дописывается
+    error: false
+  };
+
+  /* ---------- Числа ---------- */
+
+  // Гасит артефакты плавающей точки: 0.1 + 0.2 -> 0.3
+  function round(n) {
+    if (!isFinite(n)) return n;
+    var r = parseFloat(n.toPrecision(12));
+    return Object.is(r, -0) ? 0 : r;
+  }
+
+  function parse(str) {
+    var n = parseFloat(str);
+    return isFinite(n) ? n : 0;
+  }
+
+  function numToStr(n) {
+    var abs = Math.abs(n);
+    // Слишком большие и слишком малые числа показываем в экспоненциальной записи,
+    // иначе они не помещаются на экран телефона
+    if (abs !== 0 && (abs >= 1e15 || abs < 1e-9)) {
+      return n.toExponential(11).replace(/\.?0+e/, 'e');
+    }
+    var s = String(n);
+    if (s.indexOf('e') !== -1) s = n.toExponential(11).replace(/\.?0+e/, 'e');
+    return s;
+  }
+
+  // 1234567.89 -> "1 234 567,89"
+  function format(str) {
+    if (str === ERR) return str;
+    if (str.indexOf('e') !== -1) return str.replace('.', ',');
+    var neg = str.charAt(0) === '-';
+    var body = neg ? str.slice(1) : str;
+    var parts = body.split('.');
+    var int = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, THIN);
+    var out = int + (parts.length > 1 ? ',' + parts[1] : '');
+    return (neg ? '−' : '') + out;
+  }
+
+  function digitCount(str) {
+    return str.replace(/[^0-9]/g, '').length;
+  }
+
+  /* ---------- Отрисовка ---------- */
+
+  // Подгоняем размер шрифта, чтобы длинное число целиком помещалось на экран
+  function fitResult() {
+    resultEl.style.fontSize = '';
+    var size = parseFloat(getComputedStyle(resultEl).fontSize);
+    var guard = 60;
+    while (resultEl.scrollWidth > resultEl.clientWidth && size > 14 && guard-- > 0) {
+      size -= 1;
+      resultEl.style.fontSize = size + 'px';
+    }
+  }
+
+  function render() {
+    var text = state.error ? ERR : format(state.current);
+    resultEl.textContent = text;
+    resultEl.classList.toggle('err', state.error);
+    fitResult();
+
+    exprEl.textContent = (!state.error && state.op !== null && state.previous !== null)
+      ? format(numToStr(state.previous)) + ' ' + state.op
+      : '';
+
+    var opKeys = keysEl.querySelectorAll('.key.op');
+    for (var i = 0; i < opKeys.length; i++) {
+      opKeys[i].classList.toggle('active', !state.error && state.overwrite && opKeys[i].dataset.op === state.op);
+    }
+  }
+
+  /* ---------- Операции ---------- */
+
+  function clearAll() {
+    state.current = '0';
+    state.previous = null;
+    state.op = null;
+    state.overwrite = false;
+    state.error = false;
+  }
+
+  function inputDigit(d) {
+    if (state.error) clearAll();
+    if (state.overwrite) {
+      state.current = d;
+      state.overwrite = false;
+      return;
+    }
+    if (state.current === '0') { state.current = d; return; }
+    if (state.current === '-0') { state.current = '-' + d; return; }
+    if (digitCount(state.current) >= MAX_DIGITS) return;
+    state.current += d;
+  }
+
+  function inputDot() {
+    if (state.error) clearAll();
+    if (state.overwrite) {
+      state.current = '0.';
+      state.overwrite = false;
+      return;
+    }
+    if (state.current.indexOf('.') === -1) state.current += '.';
+  }
+
+  function toggleSign() {
+    if (state.error) return;
+    // Знак после оператора относится к новому операнду: 8 × ± 3 = −24
+    if (state.overwrite && state.op !== null) {
+      state.current = '-0';
+      state.overwrite = false;
+      return;
+    }
+    if (state.current === '0') return;
+    state.current = state.current.charAt(0) === '-'
+      ? state.current.slice(1)
+      : '-' + state.current;
+  }
+
+  function backspace() {
+    if (state.error) { clearAll(); return; }
+    if (state.overwrite) {
+      state.current = '0';
+      state.overwrite = false;
+      return;
+    }
+    state.current = state.current.slice(0, -1);
+    if (state.current === '' || state.current === '-') state.current = '0';
+  }
+
+  // Возвращает число либо null, если вычислить нельзя
+  function compute() {
+    var a = state.previous;
+    var b = parse(state.current);
+    var r;
+    switch (state.op) {
+      case '+': r = a + b; break;
+      case '−': r = a - b; break;
+      case '×': r = a * b; break;
+      case '÷': r = b === 0 ? NaN : a / b; break;
+      default: return null;
+    }
+    r = round(r);
+    if (!isFinite(r)) {
+      state.error = true;
+      state.previous = null;
+      state.op = null;
+      state.overwrite = false;
+      return null;
+    }
+    return r;
+  }
+
+  function setOp(nextOp) {
+    if (state.error) return;
+    if (state.op !== null && !state.overwrite) {
+      var r = compute();
+      if (r === null) return;
+      state.previous = r;
+      state.current = numToStr(r);
+    } else {
+      state.previous = parse(state.current);
+    }
+    state.op = nextOp;
+    state.overwrite = true;
+  }
+
+  function equals() {
+    if (state.error || state.op === null) return;
+    var r = compute();
+    if (r === null) return;
+    state.current = numToStr(r);
+    state.previous = null;
+    state.op = null;
+    state.overwrite = true;
+  }
+
+  // 50 + 10 % = 55 (процент от первого операнда), 200 × 10 % = 20 (просто /100)
+  function percent() {
+    if (state.error) return;
+    var b = parse(state.current);
+    var r = (state.previous !== null && (state.op === '+' || state.op === '−'))
+      ? state.previous * b / 100
+      : b / 100;
+    state.current = numToStr(round(r));
+    state.overwrite = true;
+  }
+
+  /* ---------- Ввод ---------- */
+
+  // Лёгкий виброотклик. На компьютере вибромотора нет и вызов ничего не делает,
+  // на iPhone браузерам этот интерфейс недоступен — там нажатия останутся без отклика.
+  var canVibrate = !!(navigator && typeof navigator.vibrate === 'function');
+
+  function buzz(ms) {
+    if (!canVibrate) return;
+    try { navigator.vibrate(ms); } catch (e) { /* браузер может запретить */ }
+  }
+
+  function perform(action, value) {
+    buzz(action === 'equals' ? 18 : 10);
+    switch (action) {
+      case 'digit': inputDigit(value); break;
+      case 'dot': inputDot(); break;
+      case 'op': setOp(value); break;
+      case 'equals': equals(); break;
+      case 'clear': clearAll(); break;
+      case 'back': backspace(); break;
+      case 'sign': toggleSign(); break;
+      case 'percent': percent(); break;
+      default: return;
+    }
+    render();
+  }
+
+  keysEl.addEventListener('click', function (e) {
+    var btn = e.target.closest('.key');
+    if (!btn) return;
+    perform(btn.dataset.action, btn.dataset.digit || btn.dataset.op);
+    btn.blur();
+  });
+
+  /* ---------- Клавиатура ---------- */
+
+  function findKey(action, value) {
+    var sel = '.key[data-action="' + action + '"]';
+    if (action === 'digit') sel += '[data-digit="' + value + '"]';
+    if (action === 'op') sel += '[data-op="' + value + '"]';
+    return keysEl.querySelector(sel);
+  }
+
+  function flash(btn) {
+    if (!btn) return;
+    btn.classList.add('pressed');
+    setTimeout(function () { btn.classList.remove('pressed'); }, 110);
+  }
+
+  window.addEventListener('keydown', function (e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+    var k = e.key;
+    var action = null;
+    var value = null;
+
+    if (k >= '0' && k <= '9') { action = 'digit'; value = k; }
+    else if (k === '.' || k === ',') { action = 'dot'; }
+    else if (k === '+') { action = 'op'; value = '+'; }
+    else if (k === '-') { action = 'op'; value = '−'; }
+    else if (k === '*' || k === 'x' || k === 'X' || k === 'х' || k === 'Х') { action = 'op'; value = '×'; }
+    else if (k === '/') { action = 'op'; value = '÷'; }
+    else if (k === 'Enter' || k === '=') { action = 'equals'; }
+    else if (k === 'Backspace') { action = 'back'; }
+    else if (k === 'Escape' || k === 'Delete' || k === 'c' || k === 'C' || k === 'с' || k === 'С') { action = 'clear'; }
+    else if (k === '%') { action = 'percent'; }
+    else if (k === 'F9') { action = 'sign'; }
+    else return;
+
+    e.preventDefault(); // иначе Enter/пробел повторно нажмёт кнопку в фокусе
+    flash(findKey(action, value));
+    perform(action, value);
+  });
+
+  /* ---------- Тема ---------- */
+
+  function currentTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  }
+
+  // Цвет строки состояния на телефоне. Значения совпадают с --bg в CSS.
+  var THEME_BG = { dark: '#0f1115', light: '#eef1f6' };
+
+  function applyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    metaTheme.setAttribute('content', THEME_BG[t]);
+  }
+
+  function hasSavedTheme() {
+    try {
+      var s = localStorage.getItem('calc-theme');
+      return s === 'light' || s === 'dark';
+    } catch (e) { return false; }
+  }
+
+  // Пока пользователь сам не выбирал тему, следуем за системной
+  var systemTheme = window.matchMedia('(prefers-color-scheme: light)');
+  var onSystemThemeChange = function () {
+    if (!hasSavedTheme()) applyTheme(systemTheme.matches ? 'light' : 'dark');
+  };
+  if (systemTheme.addEventListener) systemTheme.addEventListener('change', onSystemThemeChange);
+  else if (systemTheme.addListener) systemTheme.addListener(onSystemThemeChange);
+
+  themeBtn.addEventListener('click', function () {
+    buzz(10);
+    var next = currentTheme() === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+    try { localStorage.setItem('calc-theme', next); } catch (err) { /* нет доступа к хранилищу */ }
+    themeBtn.blur();
+  });
+  // Поворот экрана и изменение окна меняют доступную ширину — пересчитываем шрифт
+  window.addEventListener('resize', fitResult);
+  window.addEventListener('orientationchange', fitResult);
+
+  // Картинки наклеек вшиты в файл. Если одна не отрисовалась — убираем, чтобы не висел значок битой картинки.
+  document.querySelectorAll('.sticker').forEach(function (el) {
+    el.addEventListener('error', function () { el.remove(); fitStickers(); });
+    el.addEventListener('load', fitStickers);
+    if (el.complete && el.naturalWidth === 0) el.remove();
+  });
+
+  // Наклейки одной высоты (верх и низ идут по одной линии). Высоту подбираем так,
+  // чтобы между надписью, наклейками и луной оставался зазор не меньше 5 px:
+  // на широком экране наклейки крупнее, на узком — чуть меньше, но не слипаются.
+  // Базовая высота наклейки до 45 px; у вытянутой (сова) множитель data-scale делает её чуть крупнее
+  var STICKER_MAX = 45, STICKER_MIN = 34, STICKER_GAP = 5, TOPBAR_H = 40;
+  function stickerScale(el) {
+    var s = parseFloat(el.getAttribute('data-scale'));
+    return s > 0 ? s : 1;
+  }
+  function fitStickers() {
+    var els = document.querySelectorAll('.sticker');
+    var bar = document.querySelector('.topbar');
+    var title = bar && bar.querySelector('.title');
+    if (!els.length || !title) return;
+    var cs = getComputedStyle(bar);
+    var avail = bar.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)
+      - title.offsetWidth - themeBtn.offsetWidth + 10;
+    var sum = 0, ready = 0;
+    els.forEach(function (el) {
+      if (el.naturalWidth > 0) {
+        sum += (el.naturalWidth / el.naturalHeight) * stickerScale(el);
+        ready++;
+      }
+    });
+    if (!ready) return;
+    var hpx = Math.floor((avail - STICKER_GAP * (ready + 1)) / sum);
+    hpx = Math.max(STICKER_MIN, Math.min(STICKER_MAX, hpx));
+    els.forEach(function (el) {
+      var h = Math.round(hpx * stickerScale(el));
+      var m = -(h - TOPBAR_H) / 2;
+      el.style.height = h + 'px';
+      el.style.marginTop = m + 'px';
+      el.style.marginBottom = m + 'px';
+    });
+  }
+  window.addEventListener('resize', fitStickers);
+  window.addEventListener('load', fitStickers);
+  fitStickers();
+
+  applyTheme(currentTheme());
+  render();
+
+  // Первая отрисовка прошла — возвращаем плавные переходы.
+  // Таймер подстраховывает случай, когда кадры не отрисовываются (свёрнутая вкладка).
+  var enableAnim = function () { document.documentElement.classList.remove('no-anim'); };
+  requestAnimationFrame(function () { requestAnimationFrame(enableAnim); });
+  setTimeout(enableAnim, 400);
+
+  /* ---------- Офлайн-режим ---------- */
+
+  if (location.protocol !== 'file:' && 'serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      try {
+        navigator.serviceWorker.register('sw.js').catch(function () { /* офлайн-кэш недоступен */ });
+      } catch (err) { /* игнорируем */ }
+    });
+  }
+})();
+</script>
+</body>
+</html>
