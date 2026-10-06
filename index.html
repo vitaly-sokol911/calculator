@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-jsL+nBXVmSlpRjRfXu8S6jFAsYSPlJ6js9Qwtm5YEW0=' 'sha256-I8vwIf5OwBxSwCbminf5gR49gQR9Jaws3h0ffaFqfg8='; style-src 'sha256-CiJ/6h1Qnhd1zvR0+/6yjedVh6ih3vv6F/r1foXT/XU='; img-src 'self' data:; manifest-src 'self'; worker-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-jsL+nBXVmSlpRjRfXu8S6jFAsYSPlJ6js9Qwtm5YEW0=' 'sha256-I8vwIf5OwBxSwCbminf5gR49gQR9Jaws3h0ffaFqfg8='; style-src 'sha256-gWVQPG+Ms/S2fNRbab3DnFZpNJNDR+QFG/dltwW6Q3I='; img-src 'self' data:; manifest-src 'self'; worker-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <meta name="referrer" content="no-referrer">
 <title>Калькулятор — пример PWA-приложения</title>
 <meta name="description" content="Демо-приложение: калькулятор для компьютера и телефона. Тёмная и светлая тема, ввод с клавиатуры, вибрация на телефоне, работает без интернета и ставится на домашний экран.">
@@ -259,6 +259,25 @@
 
   @media (max-height: 620px) {
     .keys { grid-auto-rows: minmax(48px, 1fr); gap: 8px; }
+  }
+
+  /* Телефон лёжа: слева шапка и экран, справа клавиатура. Иначе нижние ряды кнопок уходят за край */
+  @media (max-height: 520px) and (orientation: landscape) {
+    .app {
+      max-width: 760px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto 1fr;
+      column-gap: 14px;
+      row-gap: 8px;
+      padding: 10px 14px;
+    }
+    .topbar { grid-column: 1; grid-row: 1; }
+    .display { grid-column: 1; grid-row: 2; min-height: 0; max-height: none; }
+    .keys { grid-column: 2; grid-row: 1 / span 2; grid-auto-rows: minmax(0, 1fr); gap: 6px; }
+    .key { min-height: 0; border-radius: 14px; font-size: 1.15rem; }
+    .key.fn { font-size: 1rem; }
+    .result { font-size: clamp(2rem, 9vh, 2.8rem); }
   }
 
   .key {
